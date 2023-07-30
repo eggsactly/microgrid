@@ -1,7 +1,10 @@
 #!/usr/bin/python
 
-# From engineering toolbox
-# lists ohms/1000m of wire.
+# Copyright (C) 2023 Garrett Weaver
+# City of Tucson Commission on Climate, Energy, and Sustainability 
+
+# From engineering toolbox lists ohms/1000m of wire. 
+# This dictionary associates wire gauge with resistance per 1000m of wire
 copperWireResistance = {
      "1" : 0.41
     ,"2" : 0.51
