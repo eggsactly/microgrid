@@ -166,8 +166,8 @@ def main():
     width = 32.0
     # Insulation R values (imperial units) of types of surfaces, based on 
     # building codes in our region from Owens Corning. 
-    wallInsulationR = 13
-    ceilingInsulationR = 30
+    wallInsulationR = 2.2
+    ceilingInsulationR = 13
 
     # R value is 5.8 times larger than RSI insulation value, so if you were to
     # use advertised R values from commercial insulation, it would need to be
