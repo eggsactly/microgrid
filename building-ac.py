@@ -137,13 +137,19 @@ def simulate_building_ac(buildingFaces, volume, temps, timeStep, duration,
         # Calculate the new temperature 
         currentIndoorTemp = currentIndoorTemp + tempChange
 
+        # turn on demand side management at 3:00 and off at 7:00 
+        if t > 54000 and t < 68400:
+            thermostatsetting = thermostat + 2
+        else:
+            thermostatsetting = thermostat
+
         # Determine if the AC should be on based on the thermostat 
         if acOn:
-            if currentIndoorTemp < FahrenheitToKelvin(thermostat - thermostateDifferential):
+            if currentIndoorTemp < FahrenheitToKelvin(thermostatsetting - thermostateDifferential):
                 acOn = False
                 acTurnOnList.append({"T": timeTurnOn, "duration": t-timeTurnOn})
         else:
-            if currentIndoorTemp > FahrenheitToKelvin(thermostat + thermostateDifferential):
+            if currentIndoorTemp > FahrenheitToKelvin(thermostatsetting + thermostateDifferential):
                 acOn = True
                 timeTurnOn = t
 
