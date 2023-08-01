@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 # Copyright (C) 2023 Garrett Weaver
 # City of Tucson Commission on Climate, Energy, and Sustainability 
@@ -20,6 +20,14 @@
 #    - This may not be a valid assumption, but for the uses of comparison 
 #      between options this is acceptable as it will be a linear factor. This 
 #      can be mitigated by modeling an arbitrary thermal mass in the building. 
+
+# For trig functions
+import math 
+
+# For solar panel model
+from numpy import array
+from solarpy import solar_panel
+from datetime import datetime
 
 # HeatFlowRate Calculates heat flow rate between an insulated barrier using a
 # formula based on the "CRC Handbook of Thermal Engineering" edited by 
@@ -212,6 +220,24 @@ def main():
     buildingFaces.append({"area": feetToMeters(width) * feetToMeters(length), 
         "RSI": ceilingInsulationR})
 
+    # Amount of time it takes for an AC unit to turn on, which is it's largest
+    # period of power consumption
+    acTurnOnTime = 1.0
+
+    # 32 degrees is a typical solar angle in AZ 
+    # use this cell 
+    # https://www.gogreensolar.com/products/mission-solar-345w-mono-60-cell 
+
+    # A 4 kWh system costs $8000
+    # https://www.gogreensolar.com/products/4000w-diy-solar-panel-kit-grid-tie-inverter
+
+    areaOfSolarPanel = (0.0254 * 68.82) * (0.0254 * 41.50) 
+    areaOfSolarArray = 10 * areaOfSolarPanel
+    solarAngle = math.radians(-32)
+    panel = solar_panel(areaOfSolarArray, 0.187, id_name='Tucson')  # surface, efficiency and name
+    panel.set_orientation(array([math.sin(solarAngle), 0, -1 * math.cos(solarAngle)]))  # upwards
+    panel.set_position(32.2540, 110.9742, 0)  # Tucson latitude, longitude, altitude
+
     # July 27, 2023 temperatures in F from Weather Underground 
     temps = [
     {"h":0,"m":53,"T":84},
@@ -245,6 +271,13 @@ def main():
     {"h":22,"m":53,"T":89},
     {"h":23,"m":53,"T":92}]
 
+    #WA14AZ18 AC data  
+    ac_volts = 220.0
+    compressorStartAmps=43.0
+    compressorRunningAmps = 9.0
+    fanStartAmps = 1.5
+    fanRunningAmps = 0.8
+
     # simulate_building_ac will give a list of AC turn on durations throughout
     # the day 
     acOnDurations = simulate_building_ac(buildingFaces=buildingFaces, 
@@ -255,10 +288,16 @@ def main():
         acCapacity=acTotalHeatCapacity, thermostat=thermostatSetting, 
         thermostateDifferential=thermostateDifferential)
 
+    # Calculate energy used in turning on AC, assume 1s to start
+    turnOnPower = (fanStartAmps + compressorStartAmps) * ac_volts
+    runningPower = (fanRunningAmps + compressorRunningAmps) * ac_volts
+
     secondsAcOn = 0
-    print("Simulation of a 1000 sq ft., well insulated home (with no windows) "
+    print("Simulation of a 1000 sq ft., poorly insulated home (with no windows) "
 "with a 1.5 Ton AC unit")
     print("Event log:")
+    turnOnGridConsumption = 0.0
+    operatingGridConsumption = 0.0
     # List times when AC turned on 
     for acTurnOn in acOnDurations:
         hour = int(acTurnOn["T"] / 3600)
@@ -269,31 +308,50 @@ def main():
             daySide = "pm"
         else:
             daySide = "am"
-        hour = ((hour-1) % 12)+1
+        clockHour = ((hour-1) % 12)+1
 
-        print (str(hour) + ":" + ("{:02d}".format(minute)) + " " + daySide 
+        print (str(clockHour) + ":" + ("{:02d}".format(minute)) + " " + daySide 
             + " AC turned on for: " + str(acTurnOn["duration"]) + "s")
 
-    #WA14AZ18 AC data  
-    ac_volts = 220.0
-    compressorStartAmps=43.0
-    compressorRunningAmps = 9.0
-    fanStartAmps = 1.5
-    fanRunningAmps = 0.8
+        # Model energy taken from the panel and subtract it from energy 
+        # taken from the grid 
+        panel.set_datetime(datetime(2023, 7, 23, hour, minute))  
+        panelPower = panel.power()
+
+        turnOnGridConsumption = (turnOnGridConsumption + 
+            (max(turnOnPower - panelPower, 0.0) * acTurnOnTime))
+
+        # Chop power consumption into 60 second blocks and recalculate solar production each minute
+        numMinutes = int(acTurnOn["duration"]) // 60
+        for i in range(0, numMinutes):
+            operatingGridConsumption = operatingGridConsumption + (max(runningPower - panelPower, 0.0) * 60)
+            minute = minute + 1
+            if minute > 59:
+                hour = hour + 1
+                minute = 0
+            if hour > 23:
+                hour = 0
+                minute = 0
+            panel.set_datetime(datetime(2023, 7, 23, hour, minute))  
+            panelPower = panel.power()
+
+        # Calculate the last less than 60 second chunk 
+        operatingGridConsumption = operatingGridConsumption + (max(runningPower - panelPower, 0.0) * (int(acTurnOn["duration"]) % 60))
 
     # Number of times to start
     timesToStart = len(acOnDurations)
 
     # Calculate energy consumption in joules
-    runningEnergy = ((fanRunningAmps + compressorRunningAmps) * ac_volts 
-        * secondsAcOn)
+    runningEnergy = (runningPower * secondsAcOn)
+    turnOnEnergy = turnOnPower * (1.0 * timesToStart)
 
-    # Calculate energy used in turning on AC, assume 1s to start
-    turnOnEnergy = ((fanStartAmps + compressorStartAmps) * ac_volts 
-        * (1.0 * timesToStart))
+    totalGridEnergy = turnOnGridConsumption + operatingGridConsumption
 
     totalEnergy = turnOnEnergy + runningEnergy
-    
+
+    print("\nAC Power from solar panels: " + "{:.3f}".format((totalEnergy - totalGridEnergy)/3.6e6) + " kWh")
+    print("\nEnergy pulled from the grid: " 
+        + "{:.3f}".format(totalGridEnergy/3.6e6) + " kWh")
     print("\nTotal energy used for the day: " 
         + "{:.3f}".format(totalEnergy/3.6e6) + " kWh")
    

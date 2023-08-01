@@ -18,3 +18,9 @@ captured with traditional modeling approaches. Therefore numeric models based
 on first principles can offer valuable insight into non-linear phenomena that 
 will be increasingly common in the future. 
 
+# Setup
+To run the solar models, install solarpy
+```
+$ pip3 install solarpy
+```
+
